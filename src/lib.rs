@@ -132,7 +132,7 @@ pub fn spawn<F: Future + Send + 'static>(fut: F) -> JoinHandle<F::Output> {
     }
 }
 
-pub fn block_on<F: Future + Send + 'static>(mut fut: F) -> F::Output {
+pub fn block_on<F: Future + Send + 'static>(fut: F) -> F::Output {
     RUN_QUEUE.with_borrow(|run_queue| {
         let result_slot: Arc<Mutex<Option<F::Output>>> = Arc::new(Mutex::new(None));
         let cloned = result_slot.clone();
