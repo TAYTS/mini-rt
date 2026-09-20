@@ -40,7 +40,7 @@ fn get_raw_waker(data: *const ()) -> RawWaker {
 }
 
 pub struct Task {
-    pub fut: Mutex<Option<Pin<Box<dyn Future<Output = ()>>>>>,
+    pub fut: Mutex<Option<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>>,
     pub task_sender: RunQueue,
 }
 
@@ -110,7 +110,11 @@ impl<T: Send + 'static> Future for JoinHandle<T> {
     }
 }
 
-pub fn spawn<F: Future + Send + 'static>(fut: F) -> JoinHandle<F::Output> {
+pub fn spawn<F>(fut: F) -> JoinHandle<F::Output>
+where
+    F: Future + Send + 'static,
+    F::Output: Send,
+{
     let shared_state = Arc::new(Mutex::new(ShareState {
         result: None,
         waker: None,
@@ -137,7 +141,11 @@ pub fn spawn<F: Future + Send + 'static>(fut: F) -> JoinHandle<F::Output> {
     }
 }
 
-pub fn block_on<F: Future + Send + 'static>(fut: F) -> F::Output {
+pub fn block_on<F>(fut: F) -> F::Output
+where
+    F: Future + Send + 'static,
+    F::Output: Send,
+{
     RUN_QUEUE.with_borrow(|run_queue| {
         let result_slot: Arc<Mutex<Option<F::Output>>> = Arc::new(Mutex::new(None));
         let cloned = result_slot.clone();
