@@ -81,14 +81,14 @@ pub struct ShareState<T> {
 }
 
 pub struct JoinHandle<T> {
-    shared_state: Arc<Mutex<ShareState<T>>>,
+    share_state: Arc<Mutex<ShareState<T>>>,
 }
 
 impl<T: Send + 'static> Future for JoinHandle<T> {
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut shared_state = self.shared_state.lock().unwrap();
+        let mut shared_state = self.share_state.lock().unwrap();
 
         if shared_state.result.is_some() {
             let result = shared_state.result.take().unwrap();
@@ -134,7 +134,7 @@ where
         run_queue.push(Arc::new(task));
     });
     JoinHandle::<F::Output> {
-        shared_state: shared_state,
+        share_state: shared_state,
     }
 }
 
