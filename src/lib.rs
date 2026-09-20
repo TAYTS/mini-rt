@@ -59,10 +59,6 @@ impl RunQueue {
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.queue.lock().is_ok_and(|q| q.is_empty())
-    }
-
     pub fn pop(&self) -> Option<Arc<Task>> {
         if let Ok(mut queue) = self.queue.lock() {
             if !queue.is_empty() {
