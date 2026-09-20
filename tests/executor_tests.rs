@@ -43,12 +43,10 @@ impl Future for StashWakerFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut data_guard = self.shared_data.lock().unwrap();
 
-        println!("poll");
         if !data_guard.result.unwrap_or_default() {
             match data_guard.waker.as_ref() {
                 Some(old_waker) if old_waker.will_wake(cx.waker()) => {}
                 _ => {
-                    println!("set waker");
                     data_guard.waker.replace(cx.waker().clone());
                 }
             };
@@ -92,8 +90,6 @@ fn test_wake_from_other_thread() {
     thread::spawn(move || {
         // Add delay to ensure the waker has set
         thread::sleep(Duration::from_millis(500));
-
-        println!("wake up from sleep");
 
         let mut data = cloned.lock().unwrap();
         let waker = data.waker.take().expect("Waker should have set");
