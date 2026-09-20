@@ -61,9 +61,7 @@ impl RunQueue {
 
     pub fn pop(&self) -> Option<Arc<Task>> {
         if let Ok(mut queue) = self.queue.lock() {
-            if !queue.is_empty() {
-                return queue.pop_front().into();
-            }
+            return queue.pop_front();
         }
         None
     }
