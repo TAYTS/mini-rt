@@ -4,6 +4,7 @@ use std::{
     pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
+    thread::Thread,
 };
 
 thread_local! {
@@ -19,7 +20,6 @@ unsafe fn wake(data: *const ()) {
     let arc_data = unsafe { Arc::from_raw(data as *const Task) };
     let cloned = arc_data.clone();
     arc_data.task_sender.push(cloned);
-    std::thread::current().unpark();
 }
 
 unsafe fn wake_by_ref(data: *const ()) {
@@ -27,7 +27,6 @@ unsafe fn wake_by_ref(data: *const ()) {
     let cloned = arc_data.clone();
     arc_data.task_sender.push(cloned);
     std::mem::forget(arc_data);
-    std::thread::current().unpark();
 }
 
 unsafe fn _drop(data: *const ()) {
@@ -48,12 +47,16 @@ pub struct Task {
 #[derive(Clone)]
 pub struct RunQueue {
     queue: Arc<Mutex<VecDeque<Arc<Task>>>>,
+    executor_thread: Thread,
 }
 
 impl RunQueue {
     pub fn new() -> Self {
         let queue = Arc::new(Mutex::new(VecDeque::<Arc<Task>>::with_capacity(1000)));
-        RunQueue { queue }
+        RunQueue {
+            queue,
+            executor_thread: std::thread::current(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -73,6 +76,8 @@ impl RunQueue {
         if let Ok(mut queue) = self.queue.lock() {
             queue.push_back(task);
         }
+        // Unconditionally wake up the executor thread when there is new task
+        self.executor_thread.unpark();
     }
 }
 
