@@ -1,8 +1,8 @@
-use mini_rt::{ShareState, block_on, spawn};
+use mini_rt::{block_on, spawn};
 use ntest::timeout;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 use std::thread;
 use std::time::Duration;
 
@@ -33,17 +33,22 @@ impl Future for CounterFuture {
     }
 }
 
+struct ShareData {
+    data: bool,
+    waker: Option<Waker>,
+}
+
 struct StashWakerFuture {
-    shared_data: Arc<Mutex<ShareState<bool>>>,
+    share_data: Arc<Mutex<ShareData>>,
 }
 
 impl Future for StashWakerFuture {
     type Output = bool;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut data_guard = self.shared_data.lock().unwrap();
+        let mut data_guard = self.share_data.lock().unwrap();
 
-        if !data_guard.result.unwrap_or_default() {
+        if !data_guard.data {
             match data_guard.waker.as_ref() {
                 Some(old_waker) if old_waker.will_wake(cx.waker()) => {}
                 _ => {
@@ -75,14 +80,14 @@ fn test_yield_n_times() {
 #[test]
 #[timeout(1000)]
 fn test_wake_from_other_thread() {
-    let share_state: Arc<Mutex<ShareState<bool>>> = Arc::new(Mutex::new(ShareState {
-        result: None,
+    let share_state: Arc<Mutex<ShareData>> = Arc::new(Mutex::new(ShareData {
+        data: false,
         waker: None,
     }));
     let cloned = share_state.clone();
 
     let fut = StashWakerFuture {
-        shared_data: share_state,
+        share_data: share_state,
     };
     // Spawn future and let it store the waker
     let join_handle = spawn(fut);
@@ -93,7 +98,7 @@ fn test_wake_from_other_thread() {
 
         let mut data = cloned.lock().unwrap();
         let waker = data.waker.take().expect("Waker should have set");
-        data.result.replace(true);
+        data.data = true;
         waker.wake_by_ref();
     });
 

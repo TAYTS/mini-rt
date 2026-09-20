@@ -75,9 +75,9 @@ impl RunQueue {
     }
 }
 
-pub struct ShareState<T> {
-    pub result: Option<T>,
-    pub waker: Option<Waker>,
+struct ShareState<T> {
+    result: Option<T>,
+    waker: Option<Waker>,
 }
 
 pub struct JoinHandle<T> {

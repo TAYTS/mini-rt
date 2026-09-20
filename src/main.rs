@@ -2,13 +2,19 @@ use std::future::poll_fn;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Poll;
+use std::task::Waker;
 
-use mini_rt::{ShareState, block_on, spawn};
+use mini_rt::{block_on, spawn};
+
+struct ShareData {
+    data: Option<String>,
+    waker: Option<Waker>,
+}
 
 fn main() {
     let _ = block_on(async {
-        let shared_data: Arc<Mutex<ShareState<String>>> = Arc::new(Mutex::new(ShareState {
-            result: None,
+        let shared_data: Arc<Mutex<ShareData>> = Arc::new(Mutex::new(ShareData {
+            data: None,
             waker: None,
         }));
         let clone1 = shared_data.clone();
@@ -20,10 +26,10 @@ fn main() {
                 poll_fn(|cx| {
                     let mut guard = clone1.lock().unwrap();
 
-                    if guard.result.as_deref().is_some_and(|res| res == "pong")
-                        || guard.result.as_deref().is_none()
+                    if guard.data.as_deref().is_some_and(|res| res == "pong")
+                        || guard.data.as_deref().is_none()
                     {
-                        guard.result.replace("ping".to_string());
+                        guard.data.replace("ping".to_string());
                         let waker = guard.waker.take();
 
                         drop(guard);
@@ -49,10 +55,10 @@ fn main() {
                 poll_fn(|cx| {
                     let mut guard = clone2.lock().unwrap();
 
-                    if guard.result.as_deref().is_some_and(|res| res == "ping")
-                        || guard.result.as_deref().is_none()
+                    if guard.data.as_deref().is_some_and(|res| res == "ping")
+                        || guard.data.as_deref().is_none()
                     {
-                        guard.result.replace("pong".to_string());
+                        guard.data.replace("pong".to_string());
                         let waker = guard.waker.take();
 
                         drop(guard);
