@@ -124,9 +124,12 @@ where
     RUN_QUEUE.with_borrow(|run_queue| {
         let boxed_fut = Box::pin(async move {
             let result = fut.await;
-            let mut cloned_guard = cloned.lock().unwrap();
-            cloned_guard.result.replace(result);
-            if let Some(waker) = &cloned_guard.waker {
+            let extracted_waker = {
+                let mut cloned_guard = cloned.lock().unwrap();
+                cloned_guard.result.replace(result);
+                cloned_guard.waker.take()
+            };
+            if let Some(waker) = extracted_waker {
                 waker.wake_by_ref();
             }
         });
