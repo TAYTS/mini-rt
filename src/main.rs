@@ -24,7 +24,11 @@ fn main() {
                         || guard.result.as_deref().is_none()
                     {
                         guard.result.replace("ping".to_string());
-                        if let Some(waker) = guard.waker.take() {
+                        let waker = guard.waker.take();
+
+                        drop(guard);
+
+                        if let Some(waker) = waker {
                             waker.wake();
                         }
                         return Poll::Ready(());
@@ -49,8 +53,11 @@ fn main() {
                         || guard.result.as_deref().is_none()
                     {
                         guard.result.replace("pong".to_string());
+                        let waker = guard.waker.take();
 
-                        if let Some(waker) = guard.waker.take() {
+                        drop(guard);
+
+                        if let Some(waker) = waker {
                             waker.wake();
                         }
                         return Poll::Ready(());
