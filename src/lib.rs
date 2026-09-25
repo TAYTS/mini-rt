@@ -1,15 +1,22 @@
 use std::{
     cell::RefCell,
-    collections::VecDeque,
+    cmp::Reverse,
+    collections::{BinaryHeap, VecDeque},
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex, OnceLock,
+        mpsc::{RecvTimeoutError, SyncSender, sync_channel},
+    },
     task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
-    thread::Thread,
+    thread::{self, Thread},
+    time,
 };
 
 thread_local! {
     static RUN_QUEUE: RefCell<RunQueue> = RefCell::new(RunQueue::new());
 }
+
+static TIMER_SENDER: OnceLock<SyncSender<TimerEntry>> = OnceLock::new();
 
 unsafe fn clone(data: *const ()) -> RawWaker {
     unsafe { Arc::increment_strong_count(data as *const Task) };
@@ -104,6 +111,61 @@ impl<T: Send + 'static> Future for JoinHandle<T> {
     }
 }
 
+struct TimerShareState {
+    // Indicate if the timer has fired
+    fired: bool,
+    waker: Option<Waker>,
+}
+
+pub struct Sleep {
+    share_state: Arc<Mutex<TimerShareState>>,
+}
+
+impl Future for Sleep {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let mut share_state = self.share_state.lock().expect("failed to get share state");
+        if share_state.fired {
+            return Poll::Ready(());
+        }
+
+        match share_state.waker.as_ref() {
+            Some(old_waker) if old_waker.will_wake(cx.waker()) => {}
+            _ => {
+                share_state.waker.replace(cx.waker().clone());
+            }
+        }
+        Poll::Pending
+    }
+}
+
+struct TimerEntry {
+    // Moment when the timer should fire
+    deadline: time::Instant,
+    share_state: Arc<Mutex<TimerShareState>>,
+}
+
+impl Ord for TimerEntry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.deadline.cmp(&other.deadline)
+    }
+}
+
+impl Eq for TimerEntry {}
+
+impl PartialOrd for TimerEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.deadline.partial_cmp(&other.deadline)
+    }
+}
+
+impl PartialEq for TimerEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.deadline.eq(&other.deadline)
+    }
+}
+
 pub fn spawn<F>(fut: F) -> JoinHandle<F::Output>
 where
     F: Future + Send + 'static,
@@ -176,4 +238,67 @@ where
             std::thread::park();
         }
     })
+}
+
+pub fn sleep(duration: time::Duration) -> Sleep {
+    let sender = TIMER_SENDER.get_or_init(|| {
+        const MAX_QUEUE_SIZE: usize = 10_000;
+        let (sender, recv) = sync_channel::<TimerEntry>(MAX_QUEUE_SIZE);
+
+        // Spawn background thread, safe as this is only called once
+        thread::spawn(move || {
+            // Min heap based on the timer entry deadline
+            let mut timer_heap: BinaryHeap<Reverse<TimerEntry>> = BinaryHeap::new();
+
+            loop {
+                // No pending sleep timer, waiting for new task from channel
+                if timer_heap.is_empty() {
+                    let new_entry = recv.recv().expect("failed to get timer");
+                    timer_heap.push(Reverse(new_entry));
+                }
+
+                let head_timer = &timer_heap.peek().unwrap().0;
+                // Wait until the head timer is completed else terminate with new timer
+                match recv.recv_timeout(head_timer.deadline - time::Instant::now()) {
+                    Ok(new_entry) => {
+                        timer_heap.push(Reverse(new_entry));
+                    }
+                    Err(RecvTimeoutError::Timeout) => {
+                        // timer completed, trigger waker stored in the timer
+                        let completed_timer = timer_heap.pop().unwrap().0;
+                        let waker = {
+                            let mut share_state = completed_timer.share_state.lock().unwrap();
+                            share_state.fired = true;
+                            share_state.waker.take()
+                        };
+                        if let Some(waker) = waker {
+                            waker.wake();
+                        }
+                    }
+                    Err(RecvTimeoutError::Disconnected) => {
+                        // No more timer in the pipeline, terminate
+                        return;
+                    }
+                }
+            }
+        });
+        sender
+    });
+
+    let share_state = Arc::new(Mutex::new(TimerShareState {
+        fired: false,
+        waker: None,
+    }));
+    let deadline = time::Instant::now()
+        .checked_add(duration)
+        .expect("invalid sleep duration");
+    let sleep_fut = Sleep {
+        share_state: share_state.clone(),
+    };
+    let timer_entry = TimerEntry {
+        deadline,
+        share_state: share_state,
+    };
+    sender.send(timer_entry).expect("failed to queue timer");
+    sleep_fut
 }
