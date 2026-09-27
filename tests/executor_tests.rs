@@ -197,12 +197,12 @@ fn test_sleep_with_earlier_timeout() {
 
     let _ = block_on(async {
         let handle1 = spawn(async move {
-            sleep(Duration::from_millis(200)).await;
+            sleep(Duration::from_millis(100)).await;
             clone1.lock().unwrap().push("spawn 1".into());
         });
 
         let handle2 = spawn(async move {
-            sleep(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(50)).await;
             clone2.lock().unwrap().push("spawn 2".into());
         });
 
@@ -212,4 +212,66 @@ fn test_sleep_with_earlier_timeout() {
 
     let output_guard = output.lock().unwrap();
     assert_eq!(*output_guard, ["spawn 2", "spawn 1"]);
+}
+
+#[test]
+#[timeout(1000)]
+fn test_poll_after_ready_sleep() {
+    block_on(async {
+        let mut slp = Box::pin(sleep(Duration::from_millis(10)));
+
+        // Wait for the sleep future to finish
+        slp.as_mut().await;
+
+        // Force poll for second time
+        poll_fn(|cx| {
+            assert_eq!(slp.as_mut().poll(cx), Poll::Ready(()));
+            Poll::Ready(())
+        })
+        .await
+    });
+}
+
+#[test]
+#[timeout(1000)]
+fn test_dropped_timer_is_safe() {
+    block_on(async {
+        let mut slp = Box::pin(sleep(Duration::from_millis(50)));
+
+        // Poll to register the waker
+        poll_fn(|cx| {
+            let _ = slp.as_mut().poll(cx);
+            Poll::Ready(())
+        })
+        .await;
+
+        // Drop the sleep future
+        drop(slp);
+
+        // Create new timeout at later time to make sure the
+        // runtime clear the earlier timeout without panic
+        sleep(Duration::from_millis(100)).await;
+    });
+}
+
+#[test]
+#[timeout(5000)]
+fn test_10k_sleep() {
+    block_on(async {
+        let mut handles = vec![];
+
+        // Spawned 10K sleep
+        for i in 0..10_000 {
+            let scattered_duration = (i * 7) % 50;
+
+            handles.push(spawn(async move {
+                sleep(Duration::from_millis(scattered_duration as u64)).await;
+            }));
+        }
+
+        for handle in handles {
+            handle.await
+        }
+        // All should finish at 10ms else will trigger timeout for this test
+    });
 }
