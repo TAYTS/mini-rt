@@ -1,4 +1,4 @@
-use mini_rt::{block_on, spawn};
+use mini_rt::{block_on, sleep, spawn};
 use ntest::timeout;
 use std::future::poll_fn;
 use std::pin::Pin;
@@ -185,4 +185,31 @@ fn test_ping_pong() {
         println!("{:?}", output_guard);
         assert_eq!(*output_guard, ["ping", "pong", "ping", "pong"]);
     });
+}
+
+#[test]
+#[timeout(1000)]
+fn test_sleep_with_earlier_timeout() {
+    let output = Arc::new(Mutex::new(Vec::<String>::new()));
+
+    let clone1 = output.clone();
+    let clone2 = output.clone();
+
+    let _ = block_on(async {
+        let handle1 = spawn(async move {
+            sleep(Duration::from_millis(200)).await;
+            clone1.lock().unwrap().push("spawn 1".into());
+        });
+
+        let handle2 = spawn(async move {
+            sleep(Duration::from_millis(100)).await;
+            clone2.lock().unwrap().push("spawn 2".into());
+        });
+
+        handle1.await;
+        handle2.await;
+    });
+
+    let output_guard = output.lock().unwrap();
+    assert_eq!(*output_guard, ["spawn 2", "spawn 1"]);
 }
