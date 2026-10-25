@@ -1,3 +1,5 @@
+mod timer;
+
 use std::{
     cell::RefCell,
     cmp::Reverse,
