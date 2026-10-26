@@ -21,6 +21,11 @@ fn level_for(elapsed: u64, when: u64) -> usize {
     masked.ilog2() as usize / BITS_PER_LEVEL
 }
 
+/// Converts a deadline timestamp `when` and a wheel level to its slot index (0..63).
+fn slot_for(when: u64, level: usize) -> usize {
+    ((when >> (level * BITS_PER_LEVEL)) & SLOT_MASK) as usize
+}
+
 #[cfg(test)]
 mod timer_test {
     use super::*;
@@ -37,7 +42,7 @@ mod timer_test {
     fn level_for_level_threshold() {
         for i in 0..NUM_LEVELS {
             let elapsed: u64 = 0;
-            let when: u64 = 1 << (6 * i);
+            let when: u64 = 1 << (BITS_PER_LEVEL * i);
 
             assert_eq!(level_for(elapsed, when), i);
         }
@@ -46,12 +51,12 @@ mod timer_test {
     #[test]
     fn level_for_max_duration() {
         let elapsed: u64 = 0;
-        let when: u64 = (1 << (6 * 6)) - 1;
+        let when: u64 = (1 << (BITS_PER_LEVEL * 6)) - 1;
 
         assert_eq!(level_for(elapsed, when), 5);
 
         let elapsed: u64 = 0;
-        let when: u64 = 1 << (6 * 6);
+        let when: u64 = 1 << (BITS_PER_LEVEL * 6);
 
         assert_eq!(level_for(elapsed, when), 5);
 
@@ -86,5 +91,48 @@ mod timer_test {
 
         assert_eq!(level_for(elapsed, when), 1);
         assert_eq!(level_for(when, elapsed), 1);
+    }
+
+    #[test]
+    fn slot_for_base() {
+        let when = 0;
+        let level = 0;
+
+        assert_eq!(slot_for(when, level), 0);
+    }
+
+    #[test]
+    fn slot_for_different_level() {
+        for i in 0..NUM_LEVELS {
+            let when = 1 << (BITS_PER_LEVEL * i);
+            let level = i;
+
+            assert_eq!(slot_for(when, level), 1);
+        }
+
+        // upper bound for each level
+        for i in 0..NUM_LEVELS {
+            let when = 63 << (BITS_PER_LEVEL * i);
+            let level = i;
+
+            assert_eq!(slot_for(when, level), 63);
+        }
+    }
+
+    #[test]
+    fn slot_for_exceed_max_level() {
+        let when = 1 << (BITS_PER_LEVEL * 6);
+        let level = 5;
+
+        assert_eq!(slot_for(when, level), 0);
+    }
+
+    #[test]
+    fn slot_for_level_isolation() {
+        // lower bits (bits 0..5) are discarded by shift
+        assert_eq!(slot_for(64 + 63, 1), 1);
+
+        // higher bits (bits 6+) are discarded by mask
+        assert_eq!(slot_for(64 + 5, 0), 5);
     }
 }
