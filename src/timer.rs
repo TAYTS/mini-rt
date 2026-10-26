@@ -26,6 +26,11 @@ fn slot_for(when: u64, level: usize) -> usize {
     ((when >> (level * BITS_PER_LEVEL)) & SLOT_MASK) as usize
 }
 
+/// Returns the time duration (in ticks / ms) represented by a single slot at the given level.
+fn slot_range(level: usize) -> u64 {
+    1 << (BITS_PER_LEVEL * level)
+}
+
 #[cfg(test)]
 mod timer_test {
     use super::*;
@@ -134,5 +139,13 @@ mod timer_test {
 
         // higher bits (bits 6+) are discarded by mask
         assert_eq!(slot_for(64 + 5, 0), 5);
+    }
+
+    #[test]
+    fn slot_range_different_level() {
+        let slot_res: [u64; NUM_LEVELS] = [1, 64, 4096, 262_144, 16_777_216, 1_073_741_824];
+        for res in slot_res.iter().enumerate() {
+            assert_eq!(slot_range(res.0), *res.1);
+        }
     }
 }
