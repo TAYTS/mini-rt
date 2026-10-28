@@ -145,6 +145,7 @@ impl Future for Sleep {
 struct TimerEntry {
     // Moment when the timer should fire
     deadline: time::Instant,
+    when: u64,
     share_state: Arc<Mutex<TimerShareState>>,
 }
 
@@ -158,13 +159,17 @@ impl Eq for TimerEntry {}
 
 impl PartialOrd for TimerEntry {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.deadline.partial_cmp(&other.deadline)
+        let ordering = self.deadline.partial_cmp(&other.deadline);
+        if ordering.is_some_and(|ord| ord.is_ne()) {
+            return ordering;
+        }
+        self.when.partial_cmp(&other.when)
     }
 }
 
 impl PartialEq for TimerEntry {
     fn eq(&self, other: &Self) -> bool {
-        self.deadline.eq(&other.deadline)
+        self.deadline.eq(&other.deadline) && self.when.eq(&other.when)
     }
 }
 
@@ -299,6 +304,7 @@ pub fn sleep(duration: time::Duration) -> Sleep {
     };
     let timer_entry = TimerEntry {
         deadline,
+        when: 0,
         share_state: share_state,
     };
     sender.send(timer_entry).expect("failed to queue timer");
