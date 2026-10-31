@@ -61,7 +61,7 @@ impl Level {
 
     /// Inserts a [TimerEntry] into its corresponding slot.
     fn insert(&mut self, entry: TimerEntry) {
-        let slot_idx = slot_for(entry.when, self.level);
+        let slot_idx = slot_for(entry.deadline_tick, self.level);
 
         self.slots[slot_idx].push(entry);
         self.occupied |= 1 << slot_idx;
@@ -253,12 +253,12 @@ mod timer_test {
             let mut level = Level::new(i);
             let first_entry = TimerEntry {
                 deadline: Instant::now(),
-                when: 0,
+                deadline_tick: 0,
                 share_state: shared.clone(),
             };
             let last_entry = TimerEntry {
                 deadline: Instant::now(),
-                when: 63 * slot_range(i),
+                deadline_tick: 63 * slot_range(i),
                 share_state: shared.clone(),
             };
 
@@ -281,7 +281,7 @@ mod timer_test {
         let mut level = Level::new(0);
         let entry = TimerEntry {
             deadline: Instant::now(),
-            when: 64 * slot_range(0),
+            deadline_tick: 64 * slot_range(0),
             share_state: shared.clone(),
         };
 
@@ -301,12 +301,12 @@ mod timer_test {
         let mut level = Level::new(0);
         let first_entry = TimerEntry {
             deadline: Instant::now(),
-            when: 1 * slot_range(0),
+            deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
         let second_entry = TimerEntry {
             deadline: Instant::now(),
-            when: 1 * slot_range(0),
+            deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
 
@@ -327,12 +327,12 @@ mod timer_test {
         let mut level = Level::new(0);
         let first_entry = TimerEntry {
             deadline: Instant::now(),
-            when: 1 * slot_range(0),
+            deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
         let second_entry = TimerEntry {
             deadline: Instant::now(),
-            when: 5 * slot_range(0),
+            deadline_tick: 5 * slot_range(0),
             share_state: shared.clone(),
         };
 
@@ -354,17 +354,17 @@ mod timer_test {
         let mut level = Level::new(0);
         let first_entry = TimerEntry {
             deadline: Instant::now(),
-            when: 1 * slot_range(0),
+            deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
         let second_entry = TimerEntry {
             deadline: Instant::now(),
-            when: 1 * slot_range(0),
+            deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
         let third_entry = TimerEntry {
             deadline: Instant::now(),
-            when: 63 * slot_range(0),
+            deadline_tick: 63 * slot_range(0),
             share_state: shared.clone(),
         };
 
@@ -398,12 +398,12 @@ mod timer_test {
             let now = SLOTS_PER_LEVEL as u64 / 2 * slot_range(i);
             let past_entry = TimerEntry {
                 deadline: Instant::now(),
-                when: 1 * slot_range(i),
+                deadline_tick: 1 * slot_range(i),
                 share_state: shared.clone(),
             };
             let future_entry = TimerEntry {
                 deadline: Instant::now(),
-                when: (SLOTS_PER_LEVEL as u64 - 1) * slot_range(i),
+                deadline_tick: (SLOTS_PER_LEVEL as u64 - 1) * slot_range(i),
                 share_state: shared.clone(),
             };
             level.insert(past_entry);
@@ -427,7 +427,7 @@ mod timer_test {
         let now = 5 * slot_range(0);
         let entry = TimerEntry {
             deadline: Instant::now(),
-            when: 1 * slot_range(0),
+            deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
         level.insert(entry);
@@ -446,7 +446,7 @@ mod timer_test {
         let now = 5 * slot_range(0);
         let entry = TimerEntry {
             deadline: Instant::now(),
-            when: 5 * slot_range(0),
+            deadline_tick: 5 * slot_range(0),
             share_state: shared.clone(),
         };
         level.insert(entry);
