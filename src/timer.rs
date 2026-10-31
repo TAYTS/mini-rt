@@ -75,6 +75,22 @@ impl Level {
         self.occupied &= !(1 << slot_idx);
         std::mem::take(&mut self.slots[slot_idx])
     }
+
+    /// Finds the next occupied slot index at or after the given time, wrapping around if necessary.
+    ///
+    /// Returns `None` if this level contains no timers (`occupied == 0`).
+    fn next_occupied_slot(&self, now: u64) -> Option<usize> {
+        if self.occupied == 0 {
+            return None;
+        }
+
+        let now_slot = ((now / slot_range(self.level)) % SLOTS_PER_LEVEL as u64) as usize;
+        let rotated = self.occupied.rotate_right(now_slot as u32);
+        let zeros = rotated.trailing_zeros() as usize;
+        let slot = (now_slot + zeros) % SLOTS_PER_LEVEL;
+
+        Some(slot)
+    }
 }
 
 #[cfg(test)]
@@ -337,5 +353,80 @@ mod timer_test {
         assert_eq!(level.occupied, 1 << 63);
         assert_eq!(level.remove_slot(63).len(), 1);
         assert_eq!(level.occupied, 0);
+    }
+
+    #[test]
+    fn next_occupied_slot_none_for_empty_slot() {
+        let level = Level::new(0);
+
+        assert!(level.next_occupied_slot(10).is_none());
+    }
+
+    #[test]
+    fn next_occupied_slot_different_level() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        for i in 0..NUM_LEVELS {
+            let mut level = Level::new(i);
+            let now = SLOTS_PER_LEVEL as u64 / 2 * slot_range(i);
+            let past_entry = TimerEntry {
+                deadline: Instant::now(),
+                when: 1 * slot_range(i),
+                share_state: shared.clone(),
+            };
+            let future_entry = TimerEntry {
+                deadline: Instant::now(),
+                when: (SLOTS_PER_LEVEL as u64 - 1) * slot_range(i),
+                share_state: shared.clone(),
+            };
+            level.insert(past_entry);
+            level.insert(future_entry);
+
+            assert_eq!(
+                level.next_occupied_slot(now),
+                Some((SLOTS_PER_LEVEL as u64 - 1) as usize)
+            );
+        }
+    }
+
+    #[test]
+    fn next_occupied_slot_wrap_around() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let mut level = Level::new(0);
+        let now = 5 * slot_range(0);
+        let entry = TimerEntry {
+            deadline: Instant::now(),
+            when: 1 * slot_range(0),
+            share_state: shared.clone(),
+        };
+        level.insert(entry);
+
+        assert_eq!(level.next_occupied_slot(now), Some(1));
+    }
+
+    #[test]
+    fn next_occupied_slot_immediate() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let mut level = Level::new(0);
+        let now = 5 * slot_range(0);
+        let entry = TimerEntry {
+            deadline: Instant::now(),
+            when: 5 * slot_range(0),
+            share_state: shared.clone(),
+        };
+        level.insert(entry);
+
+        assert_eq!(level.next_occupied_slot(now), Some(5));
     }
 }
