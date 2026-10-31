@@ -93,6 +93,30 @@ impl Level {
     }
 }
 
+/// Represents the hierarchical timer wheel for the runtime.
+///
+/// Manages timer placement across multiple levels and handles cascading [TimerEntry] instances
+/// as time advances.
+struct TimerWheel {
+    /// Current monotonic clock tick (in milliseconds).
+    elapsed: u64,
+    /// Hierarchical wheel levels, where each higher level covers a coarser time span.
+    levels: [Level; NUM_LEVELS],
+    /// Timers that have expired and are ready to be processed or woken.
+    pending: Vec<TimerEntry>,
+}
+
+impl TimerWheel {
+    /// Creates a new empty [TimerWheel] with all levels initialized and `elapsed` set to 0.
+    fn new() -> TimerWheel {
+        return TimerWheel {
+            elapsed: 0,
+            levels: array::from_fn(|i| Level::new(i)),
+            pending: Vec::new(),
+        };
+    }
+}
+
 #[cfg(test)]
 mod timer_test {
     use std::{
