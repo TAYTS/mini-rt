@@ -35,6 +35,11 @@ fn slot_range(level: usize) -> u64 {
     1 << (BITS_PER_LEVEL * level)
 }
 
+/// Returns the total time span (in ticks / ms) covered by a full rotation of the given level.
+fn level_range(level: usize) -> u64 {
+    1 << (BITS_PER_LEVEL * (level + 1))
+}
+
 /// Represents a single level in the hierarchical timer wheel.
 struct Level {
     /// Zero-based index of this level (0..NUM_LEVELS).
@@ -129,6 +134,53 @@ impl TimerWheel {
         let level = level_for(self.elapsed, entry.deadline_tick);
         self.levels[level].insert(entry);
     }
+
+    /// Retrieves the next [Expiration] across all wheel levels, or `None` if the wheel is empty.
+    fn next_expiration(&self) -> Option<Expiration> {
+        if !self.pending.is_empty() {
+            return Some(Expiration {
+                level: 0,
+                slot: 0,
+                deadline: self.elapsed,
+            });
+        }
+
+        let now = self.elapsed;
+        for i in 0..NUM_LEVELS {
+            if let Some(slot) = self.levels[i].next_occupied_slot(now) {
+                let level_range = level_range(i);
+                let slot_range = slot_range(i);
+
+                // Mask out the low bits to compute the start time on current level for `now`.
+                let level_start = now & !(level_range - 1);
+                let mut deadline = level_start + slot as u64 * slot_range;
+
+                if deadline <= now {
+                    // This only happened for the top level where it serves as pseudo buffer
+                    // for entries that exceed max timer wheel duration. Will simply bump
+                    // the deadline one more period until it reaches it true deadline.
+                    deadline += level_range;
+                }
+                return Some(Expiration {
+                    level: i,
+                    slot: slot,
+                    deadline: deadline,
+                });
+            }
+        }
+        None
+    }
+}
+
+/// Represents a snapshot of [TimerWheel] expiration.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+struct Expiration {
+    /// The wheel level containing the expiring slot (0..NUM_LEVELS).
+    level: usize,
+    /// The slot index within the level (0..SLOTS_PER_LEVEL).
+    slot: usize,
+    /// Monotonic timestamp (in ticks / ms) when this slot must be processed.
+    deadline: u64,
 }
 
 #[cfg(test)]
@@ -253,6 +305,15 @@ mod timer_test {
         let slot_res: [u64; NUM_LEVELS] = [1, 64, 4096, 262_144, 16_777_216, 1_073_741_824];
         for res in slot_res.iter().enumerate() {
             assert_eq!(slot_range(res.0), *res.1);
+        }
+    }
+
+    #[test]
+    fn level_range_different_level() {
+        let level_res: [u64; NUM_LEVELS] =
+            [64, 4096, 262_144, 16_777_216, 1_073_741_824, 68_719_476_736];
+        for res in level_res.iter().enumerate() {
+            assert_eq!(level_range(res.0), *res.1);
         }
     }
 
@@ -537,5 +598,133 @@ mod timer_test {
         assert_eq!(wheel.pending.len(), 0);
         assert_eq!(wheel.levels[NUM_LEVELS - 1].occupied, 1 << 5);
         assert_eq!(wheel.levels[NUM_LEVELS - 1].slots[5].len(), 1);
+    }
+
+    #[test]
+    fn timer_wheel_next_expiration_none_for_empty_wheel() {
+        let wheel = TimerWheel::new();
+
+        assert!(wheel.next_expiration().is_none());
+    }
+
+    #[test]
+    fn timer_wheel_next_expiration_return_closest_expiration_across_levels() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let mut wheel = TimerWheel::new();
+        wheel.elapsed = 5;
+
+        // Backward insert entries
+        for i in (0..NUM_LEVELS).rev() {
+            let entry = TimerEntry {
+                deadline: Instant::now(),
+                deadline_tick: 10 * slot_range(i),
+                share_state: shared.clone(),
+            };
+            wheel.insert(entry);
+
+            assert!(wheel.next_expiration().is_some());
+            let expiration = wheel.next_expiration().unwrap();
+            assert_eq!(expiration.level, i);
+            assert_eq!(expiration.slot, 10);
+            assert_eq!(expiration.deadline, 10 * slot_range(i));
+        }
+
+        let mut wheel = TimerWheel::new();
+        wheel.elapsed = 5;
+
+        // Forward insert entries
+        for i in 0..NUM_LEVELS {
+            let entry = TimerEntry {
+                deadline: Instant::now(),
+                deadline_tick: 10 * slot_range(i),
+                share_state: shared.clone(),
+            };
+            wheel.insert(entry);
+
+            assert!(wheel.next_expiration().is_some());
+            let expiration = wheel.next_expiration().unwrap();
+            assert_eq!(expiration.level, 0);
+            assert_eq!(expiration.slot, 10);
+            assert_eq!(expiration.deadline, 10 * slot_range(0));
+        }
+    }
+
+    #[test]
+    fn timer_wheel_next_expiration_return_closest_expiration_within_level() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let mut wheel = TimerWheel::new();
+        wheel.elapsed = 5;
+        let first_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 10,
+            share_state: shared.clone(),
+        };
+        let second_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 20,
+            share_state: shared.clone(),
+        };
+        wheel.insert(first_entry);
+        wheel.insert(second_entry);
+
+        assert!(wheel.next_expiration().is_some());
+        let expiration = wheel.next_expiration().unwrap();
+        assert_eq!(expiration.level, 0);
+        assert_eq!(expiration.slot, 10);
+        assert_eq!(expiration.deadline, 10);
+    }
+
+    #[test]
+    fn timer_wheel_next_expiration_return_pending_entry() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let mut wheel = TimerWheel::new();
+        wheel.elapsed = 10;
+        let pending_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 10,
+            share_state: shared.clone(),
+        };
+        wheel.insert(pending_entry);
+
+        assert!(wheel.next_expiration().is_some());
+        let expiration = wheel.next_expiration().unwrap();
+        assert_eq!(expiration.level, 0);
+        assert_eq!(expiration.slot, 0);
+        assert_eq!(expiration.deadline, 10);
+    }
+
+    #[test]
+    fn timer_wheel_next_expiration_wrap_around() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let mut wheel = TimerWheel::new();
+        wheel.elapsed = 10;
+        let entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 64 * slot_range(NUM_LEVELS - 1),
+            share_state: shared.clone(),
+        };
+        wheel.insert(entry);
+
+        assert!(wheel.next_expiration().is_some());
+        let expiration = wheel.next_expiration().unwrap();
+        assert_eq!(expiration.level, NUM_LEVELS - 1);
+        assert_eq!(expiration.slot, 0);
+        assert_eq!(expiration.deadline, 64 * slot_range(NUM_LEVELS - 1));
     }
 }
