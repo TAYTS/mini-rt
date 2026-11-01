@@ -115,6 +115,20 @@ impl TimerWheel {
             pending: Vec::new(),
         };
     }
+
+    /// Inserts a [TimerEntry] into the wheel hierarchy.
+    ///
+    /// If the entry's deadline has already arrived or passed relative to `elapsed`,
+    /// it is pushed directly to the `pending` queue so it can be fired immediately.
+    fn insert(&mut self, entry: TimerEntry) {
+        if entry.deadline_tick <= self.elapsed {
+            self.pending.push(entry);
+            return;
+        }
+
+        let level = level_for(self.elapsed, entry.deadline_tick);
+        self.levels[level].insert(entry);
+    }
 }
 
 #[cfg(test)]
@@ -452,5 +466,54 @@ mod timer_test {
         level.insert(entry);
 
         assert_eq!(level.next_occupied_slot(now), Some(5));
+    }
+
+    #[test]
+    fn timer_wheel_insert() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+        let mut wheel = TimerWheel::new();
+        for i in 0..NUM_LEVELS {
+            let entry = TimerEntry {
+                deadline: Instant::now(),
+                deadline_tick: 5 * slot_range(i),
+                share_state: shared.clone(),
+            };
+            wheel.insert(entry);
+
+            assert_eq!(wheel.levels[i].level, i);
+            assert_eq!(wheel.levels[i].occupied, 1 << 5);
+            assert_eq!(wheel.levels[i].slots[5].len(), 1);
+        }
+    }
+
+    #[test]
+    fn timer_wheel_insert_arrived_or_passed_entry() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let mut wheel = TimerWheel::new();
+        wheel.elapsed = 10;
+
+        let arrived_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 10 * slot_range(0),
+            share_state: shared.clone(),
+        };
+        let passed_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 5 * slot_range(0),
+            share_state: shared.clone(),
+        };
+
+        wheel.insert(arrived_entry);
+        wheel.insert(passed_entry);
+
+        assert_eq!(wheel.pending.len(), 2);
+        assert_eq!(wheel.levels[0].occupied, 0);
     }
 }
