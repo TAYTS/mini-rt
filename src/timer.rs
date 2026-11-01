@@ -516,4 +516,26 @@ mod timer_test {
         assert_eq!(wheel.pending.len(), 2);
         assert_eq!(wheel.levels[0].occupied, 0);
     }
+
+    #[test]
+    fn timer_wheel_insert_far_entry() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let mut wheel = TimerWheel::new();
+
+        let far_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: (SLOTS_PER_LEVEL as u64 + 5) * slot_range(NUM_LEVELS - 1),
+            share_state: shared.clone(),
+        };
+
+        wheel.insert(far_entry);
+
+        assert_eq!(wheel.pending.len(), 0);
+        assert_eq!(wheel.levels[NUM_LEVELS - 1].occupied, 1 << 5);
+        assert_eq!(wheel.levels[NUM_LEVELS - 1].slots[5].len(), 1);
+    }
 }
