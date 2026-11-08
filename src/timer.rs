@@ -1,4 +1,4 @@
-use std::array;
+use std::{array, collections::VecDeque};
 
 use crate::TimerEntry;
 
@@ -108,7 +108,7 @@ struct TimerWheel {
     /// Hierarchical wheel levels, where each higher level covers a coarser time span.
     levels: [Level; NUM_LEVELS],
     /// Timers that have expired and are ready to be processed or woken.
-    pending: Vec<TimerEntry>,
+    pending: VecDeque<TimerEntry>,
 }
 
 impl TimerWheel {
@@ -117,7 +117,7 @@ impl TimerWheel {
         return TimerWheel {
             elapsed: 0,
             levels: array::from_fn(|i| Level::new(i)),
-            pending: Vec::new(),
+            pending: VecDeque::new(),
         };
     }
 
@@ -127,7 +127,7 @@ impl TimerWheel {
     /// it is pushed directly to the `pending` queue so it can be fired immediately.
     fn insert(&mut self, entry: TimerEntry) {
         if entry.deadline_tick <= self.elapsed {
-            self.pending.push(entry);
+            self.pending.push_back(entry);
             return;
         }
 
@@ -135,7 +135,7 @@ impl TimerWheel {
         self.levels[level].insert(entry);
     }
 
-    /// Retrieves the next [Expiration] across all wheel levels, or `None` if the wheel is empty.
+    /// Returns the next [Expiration] across all wheel levels, or `None` if the wheel is empty.
     fn next_expiration(&self) -> Option<Expiration> {
         if !self.pending.is_empty() {
             return Some(Expiration {
@@ -169,6 +169,60 @@ impl TimerWheel {
             }
         }
         None
+    }
+
+    /// Adances the timer wheel up to `now`, cascading levels and returning the next expired [TimerEntry]/
+    ///
+    /// Returns `None` once all timers scheduled at or before `now` have been yielded.
+    fn poll(&mut self, now: u64) -> Option<TimerEntry> {
+        loop {
+            if let Some(entry) = self.pending.pop_front() {
+                return Some(entry);
+            }
+
+            match self.next_expiration() {
+                Some(expiration) if expiration.deadline <= now => {
+                    self.process_expiration(&expiration, now);
+
+                    if now != u64::MAX {
+                        self.set_elapsed(expiration.deadline);
+                    }
+                }
+                _ => {
+                    self.elapsed = now;
+                    break;
+                }
+            }
+        }
+        self.pending.pop_front()
+    }
+
+    /// Drains a slot at the given [Expiration], moving expired entries into the pending queue and cascading future entries to lower levels.
+    fn process_expiration(&mut self, expiration: &Expiration, now: u64) {
+        let entries = self.levels[expiration.level].remove_slot(expiration.slot);
+        // `now` will be `u64::MAX` during runtime shutdown
+        let deadline = if now == u64::MAX {
+            now
+        } else {
+            expiration.deadline
+        };
+
+        for entry in entries {
+            // Cascade entry if deadline is not reached yet
+            if entry.deadline_tick > deadline {
+                let level = level_for(expiration.deadline, entry.deadline_tick);
+                self.levels[level].insert(entry);
+            } else {
+                self.pending.push_back(entry);
+            }
+        }
+    }
+
+    /// Update the timer wheel elapsed time, ensuring it only moves forward monotonically.
+    fn set_elapsed(&mut self, when: u64) {
+        if when > self.elapsed {
+            self.elapsed = when
+        }
     }
 }
 
@@ -726,5 +780,219 @@ mod timer_test {
         assert_eq!(expiration.level, NUM_LEVELS - 1);
         assert_eq!(expiration.slot, 0);
         assert_eq!(expiration.deadline, 64 * slot_range(NUM_LEVELS - 1));
+    }
+
+    #[test]
+    fn timer_wheel_process_expiration() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let expiration1 = Expiration {
+            level: 0,
+            slot: 10,
+            deadline: 63 * slot_range(0),
+        };
+        let expiration2 = Expiration {
+            level: 1,
+            slot: 1,
+            deadline: 1 * slot_range(1) + 5 * slot_range(0),
+        };
+        let now = 2 * slot_range(1);
+
+        let mut wheel = TimerWheel::new();
+        let expired_level_0_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 10 * slot_range(0),
+            share_state: shared.clone(),
+        };
+        let expired_level_1_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 1 * slot_range(1),
+            share_state: shared.clone(),
+        };
+        let cascade_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 1 * slot_range(1) + 10 * slot_range(0),
+            share_state: shared.clone(),
+        };
+        wheel.insert(expired_level_0_entry);
+        wheel.insert(expired_level_1_entry);
+        wheel.insert(cascade_entry);
+
+        wheel.process_expiration(&expiration1, now);
+        assert_eq!(wheel.pending.len(), 1);
+        assert_eq!(wheel.levels[0].slots[10].len(), 0);
+        assert_eq!(wheel.levels[1].slots[1].len(), 2);
+
+        wheel.process_expiration(&expiration2, now);
+        assert_eq!(wheel.pending.len(), 2);
+        assert_eq!(wheel.levels[0].slots[10].len(), 1);
+        assert_eq!(wheel.levels[1].slots[1].len(), 0);
+    }
+
+    #[test]
+    fn timer_wheel_process_expiration_wrap_around_max_duration() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let expiration = Expiration {
+            level: 5,
+            slot: 1,
+            deadline: 63 * slot_range(5),
+        };
+        let now = 64 * slot_range(5);
+        let mut wheel = TimerWheel::new();
+        let far_future_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 65 * slot_range(5),
+            share_state: shared.clone(),
+        };
+        wheel.insert(far_future_entry);
+
+        wheel.process_expiration(&expiration, now);
+
+        assert_eq!(wheel.pending.len(), 0);
+        assert_eq!(wheel.levels[5].slots[1].len(), 1);
+    }
+
+    #[test]
+    fn timer_wheel_process_expiration_flush_during_shutdown() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        let expiration = Expiration {
+            level: 5,
+            slot: 1,
+            deadline: 63 * slot_range(5),
+        };
+        // set `now` to `u64::MAX` during shutdown
+        let now = u64::MAX;
+        let mut wheel = TimerWheel::new();
+        let far_future_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 65 * slot_range(5),
+            share_state: shared.clone(),
+        };
+        wheel.insert(far_future_entry);
+
+        wheel.process_expiration(&expiration, now);
+
+        assert_eq!(wheel.pending.len(), 1);
+        assert_eq!(wheel.levels[5].slots[1].len(), 0);
+    }
+
+    #[test]
+    fn timer_wheel_poll_rotate_wheel_return_expired_entry() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+        let now = 2 * slot_range(1);
+        let mut wheel = TimerWheel::new();
+        let expired_level_1_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 1 * slot_range(1),
+            share_state: shared.clone(),
+        };
+        let cascade_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 1 * slot_range(1) + 10 * slot_range(0),
+            share_state: shared.clone(),
+        };
+        let duplicate_cascade_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 1 * slot_range(1) + 10 * slot_range(0),
+            share_state: shared.clone(),
+        };
+        wheel.insert(expired_level_1_entry);
+        wheel.insert(cascade_entry);
+        wheel.insert(duplicate_cascade_entry);
+
+        // pop first expired entry
+        let entry = wheel.poll(now);
+
+        assert!(entry.is_some());
+        let entry = entry.unwrap();
+        assert_eq!(entry.deadline_tick, 1 * slot_range(1));
+        assert_eq!(wheel.levels[1].slots[1].len(), 0);
+        assert_eq!(wheel.levels[0].slots[10].len(), 2);
+        assert_eq!(wheel.pending.len(), 0);
+        assert_eq!(wheel.elapsed, 1 * slot_range(1));
+
+        // pop second expired entry
+        let entry = wheel.poll(now);
+
+        assert!(entry.is_some());
+        let entry = entry.unwrap();
+        assert_eq!(entry.deadline_tick, 1 * slot_range(1) + 10 * slot_range(0));
+        assert_eq!(wheel.levels[0].slots[10].len(), 0);
+        assert_eq!(wheel.pending.len(), 1);
+        assert_eq!(wheel.elapsed, 1 * slot_range(1) + 10 * slot_range(0));
+
+        // pop duplicate expired entry
+        let entry = wheel.poll(now);
+        assert!(entry.is_some());
+        let entry = entry.unwrap();
+        assert_eq!(entry.deadline_tick, 1 * slot_range(1) + 10 * slot_range(0));
+        assert_eq!(wheel.pending.len(), 0);
+        assert_eq!(wheel.elapsed, 1 * slot_range(1) + 10 * slot_range(0));
+
+        let entry = wheel.poll(now);
+        assert!(entry.is_none());
+    }
+
+    #[test]
+    fn timer_wheel_poll_shutdown() {
+        let shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+
+        // set `now` to `u64::MAX` during shutdown
+        let now = u64::MAX;
+        let mut wheel = TimerWheel::new();
+        let far_future_entry = TimerEntry {
+            deadline: Instant::now(),
+            deadline_tick: 65 * slot_range(5),
+            share_state: shared.clone(),
+        };
+        wheel.insert(far_future_entry);
+
+        let entry = wheel.poll(now);
+
+        assert!(entry.is_some());
+        let entry = entry.unwrap();
+        assert_eq!(entry.deadline_tick, 65 * slot_range(5));
+        assert_eq!(wheel.pending.len(), 0);
+        assert_eq!(wheel.levels[5].slots[1].len(), 0);
+        assert_eq!(wheel.elapsed, 0);
+    }
+
+    #[test]
+    fn timer_wheel_poll_empty() {
+        let now = 10 * slot_range(0);
+        let mut wheel = TimerWheel::new();
+
+        let entry = wheel.poll(now);
+
+        assert!(entry.is_none());
+        assert_eq!(wheel.elapsed, 10 * slot_range(0));
+    }
+
+    #[test]
+    fn timer_wheel_set_elapsed() {
+        let mut wheel = TimerWheel::new();
+
+        wheel.set_elapsed(10);
+        assert_eq!(wheel.elapsed, 10);
+
+        wheel.set_elapsed(5);
+        assert_eq!(wheel.elapsed, 10);
     }
 }
