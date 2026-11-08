@@ -103,7 +103,7 @@ impl Level {
 ///
 /// Manages timer placement across multiple levels and handles cascading [TimerEntry] instances
 /// as time advances.
-struct TimerWheel {
+pub(crate) struct TimerWheel {
     /// Current monotonic clock tick (in milliseconds).
     elapsed: u64,
     /// Hierarchical wheel levels, where each higher level covers a coarser time span.
@@ -114,7 +114,7 @@ struct TimerWheel {
 
 impl TimerWheel {
     /// Creates a new empty [TimerWheel] with all levels initialized and `elapsed` set to 0.
-    fn new() -> TimerWheel {
+    pub(crate) fn new() -> TimerWheel {
         return TimerWheel {
             elapsed: 0,
             levels: array::from_fn(|i| Level::new(i)),
@@ -126,7 +126,7 @@ impl TimerWheel {
     ///
     /// If the entry's deadline has already arrived or passed relative to `elapsed`,
     /// it is pushed directly to the `pending` queue so it can be fired immediately.
-    fn insert(&mut self, entry: TimerEntry) {
+    pub(crate) fn insert(&mut self, entry: TimerEntry) {
         if entry.deadline_tick <= self.elapsed {
             self.pending.push_back(entry);
             return;
@@ -134,6 +134,11 @@ impl TimerWheel {
 
         let level = level_for(self.elapsed, entry.deadline_tick);
         self.levels[level].insert(entry);
+    }
+
+    /// Returns the next expiration tick across all wheel levels, or `None` if the wheel is empty.
+    pub(crate) fn next_expiration_time(&self) -> Option<u64> {
+        self.next_expiration().map(|expiration| expiration.deadline)
     }
 
     /// Returns the next [Expiration] across all wheel levels, or `None` if the wheel is empty.
@@ -172,10 +177,10 @@ impl TimerWheel {
         None
     }
 
-    /// Adances the timer wheel up to `now`, cascading levels and returning the next expired [TimerEntry]/
+    /// Advances the timer wheel up to `now`, cascading levels and returning the next expired [TimerEntry]/
     ///
     /// Returns `None` once all timers scheduled at or before `now` have been yielded.
-    fn poll(&mut self, now: u64) -> Option<TimerEntry> {
+    pub(crate) fn poll(&mut self, now: u64) -> Option<TimerEntry> {
         loop {
             if let Some(entry) = self.pending.pop_front() {
                 return Some(entry);
