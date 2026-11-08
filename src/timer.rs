@@ -11,7 +11,17 @@ use std::{thread, time};
 
 use entry::{Sleep, TimerEntry, TimerShareState};
 
+/// Anchor start time of the runtime, used to calculate monotonic clock ticks.
+static START_TIME: OnceLock<time::Instant> = OnceLock::new();
+
 static TIMER_SENDER: OnceLock<SyncSender<TimerEntry>> = OnceLock::new();
+
+/// Converts a [time::Instant] to monotonic clock ticks with millisecond resolution.
+fn to_tick(instant: time::Instant) -> u64 {
+    let start_time = START_TIME.get_or_init(|| time::Instant::now());
+    let tick = instant.saturating_duration_since(*start_time);
+    u64::try_from(tick.as_millis()).unwrap_or(u64::MAX)
+}
 
 pub fn sleep(duration: time::Duration) -> Sleep {
     let sender = TIMER_SENDER.get_or_init(|| {
