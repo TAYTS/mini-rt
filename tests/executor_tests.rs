@@ -275,3 +275,35 @@ fn test_10k_sleep() {
         // All should finish at 10ms else will trigger timeout for this test
     });
 }
+
+#[test]
+#[timeout(100)]
+fn test_sleep_with_zero_duration() {
+    block_on(async {
+        sleep(Duration::ZERO).await;
+    });
+}
+
+#[test]
+#[timeout(1000)]
+fn test_sleep_fired_in_order() {
+    let output = Arc::new(Mutex::new(Vec::<u64>::new()));
+    let clone = output.clone();
+
+    block_on(async move {
+        let handles = [5, 10, 50, 100].map(|duration: u64| {
+            let clone = clone.clone();
+            spawn(async move {
+                sleep(Duration::from_millis(duration)).await;
+                clone.lock().unwrap().push(duration);
+            })
+        });
+
+        for handle in handles {
+            handle.await;
+        }
+    });
+
+    let output_guard = output.lock().unwrap();
+    assert_eq!(*output_guard, [5, 10, 50, 100]);
+}
