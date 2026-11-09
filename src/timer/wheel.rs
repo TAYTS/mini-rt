@@ -1,5 +1,4 @@
 use super::entry::TimerEntry;
-
 use std::array;
 use std::collections::VecDeque;
 
@@ -246,10 +245,7 @@ struct Expiration {
 #[cfg(test)]
 mod wheel_test {
     use super::super::entry::{TimerEntry, TimerShareState};
-    use std::{
-        sync::{Arc, Mutex},
-        time::Instant,
-    };
+    use std::sync::{Arc, Mutex};
 
     use super::*;
 
@@ -386,12 +382,10 @@ mod wheel_test {
         for i in 0..NUM_LEVELS {
             let mut level = Level::new(i);
             let first_entry = TimerEntry {
-                deadline: Instant::now(),
                 deadline_tick: 0,
                 share_state: shared.clone(),
             };
             let last_entry = TimerEntry {
-                deadline: Instant::now(),
                 deadline_tick: 63 * slot_range(i),
                 share_state: shared.clone(),
             };
@@ -414,7 +408,6 @@ mod wheel_test {
 
         let mut level = Level::new(0);
         let entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 64 * slot_range(0),
             share_state: shared.clone(),
         };
@@ -434,12 +427,10 @@ mod wheel_test {
 
         let mut level = Level::new(0);
         let first_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
         let second_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
@@ -460,12 +451,10 @@ mod wheel_test {
 
         let mut level = Level::new(0);
         let first_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
         let second_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 5 * slot_range(0),
             share_state: shared.clone(),
         };
@@ -487,17 +476,14 @@ mod wheel_test {
 
         let mut level = Level::new(0);
         let first_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
         let second_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
         let third_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 63 * slot_range(0),
             share_state: shared.clone(),
         };
@@ -531,12 +517,10 @@ mod wheel_test {
             let mut level = Level::new(i);
             let now = SLOTS_PER_LEVEL as u64 / 2 * slot_range(i);
             let past_entry = TimerEntry {
-                deadline: Instant::now(),
                 deadline_tick: 1 * slot_range(i),
                 share_state: shared.clone(),
             };
             let future_entry = TimerEntry {
-                deadline: Instant::now(),
                 deadline_tick: (SLOTS_PER_LEVEL as u64 - 1) * slot_range(i),
                 share_state: shared.clone(),
             };
@@ -560,7 +544,6 @@ mod wheel_test {
         let mut level = Level::new(0);
         let now = 5 * slot_range(0);
         let entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(0),
             share_state: shared.clone(),
         };
@@ -579,7 +562,6 @@ mod wheel_test {
         let mut level = Level::new(0);
         let now = 5 * slot_range(0);
         let entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 5 * slot_range(0),
             share_state: shared.clone(),
         };
@@ -597,7 +579,6 @@ mod wheel_test {
         let mut wheel = TimerWheel::new();
         for i in 0..NUM_LEVELS {
             let entry = TimerEntry {
-                deadline: Instant::now(),
                 deadline_tick: 5 * slot_range(i),
                 share_state: shared.clone(),
             };
@@ -620,12 +601,10 @@ mod wheel_test {
         wheel.elapsed = 10;
 
         let arrived_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 10 * slot_range(0),
             share_state: shared.clone(),
         };
         let passed_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 5 * slot_range(0),
             share_state: shared.clone(),
         };
@@ -647,7 +626,6 @@ mod wheel_test {
         let mut wheel = TimerWheel::new();
 
         let far_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: (SLOTS_PER_LEVEL as u64 + 5) * slot_range(NUM_LEVELS - 1),
             share_state: shared.clone(),
         };
@@ -679,7 +657,6 @@ mod wheel_test {
         // Backward insert entries
         for i in (0..NUM_LEVELS).rev() {
             let entry = TimerEntry {
-                deadline: Instant::now(),
                 deadline_tick: 10 * slot_range(i),
                 share_state: shared.clone(),
             };
@@ -698,7 +675,6 @@ mod wheel_test {
         // Forward insert entries
         for i in 0..NUM_LEVELS {
             let entry = TimerEntry {
-                deadline: Instant::now(),
                 deadline_tick: 10 * slot_range(i),
                 share_state: shared.clone(),
             };
@@ -722,12 +698,10 @@ mod wheel_test {
         let mut wheel = TimerWheel::new();
         wheel.elapsed = 5;
         let first_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 10,
             share_state: shared.clone(),
         };
         let second_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 20,
             share_state: shared.clone(),
         };
@@ -751,7 +725,6 @@ mod wheel_test {
         let mut wheel = TimerWheel::new();
         wheel.elapsed = 10;
         let pending_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 10,
             share_state: shared.clone(),
         };
@@ -774,7 +747,6 @@ mod wheel_test {
         let mut wheel = TimerWheel::new();
         wheel.elapsed = 10;
         let entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 64 * slot_range(NUM_LEVELS - 1),
             share_state: shared.clone(),
         };
@@ -808,17 +780,14 @@ mod wheel_test {
 
         let mut wheel = TimerWheel::new();
         let expired_level_0_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 10 * slot_range(0),
             share_state: shared.clone(),
         };
         let expired_level_1_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(1),
             share_state: shared.clone(),
         };
         let cascade_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(1) + 10 * slot_range(0),
             share_state: shared.clone(),
         };
@@ -852,7 +821,6 @@ mod wheel_test {
         let now = 64 * slot_range(5);
         let mut wheel = TimerWheel::new();
         let far_future_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 65 * slot_range(5),
             share_state: shared.clone(),
         };
@@ -880,7 +848,6 @@ mod wheel_test {
         let now = u64::MAX;
         let mut wheel = TimerWheel::new();
         let far_future_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 65 * slot_range(5),
             share_state: shared.clone(),
         };
@@ -901,17 +868,14 @@ mod wheel_test {
         let now = 2 * slot_range(1);
         let mut wheel = TimerWheel::new();
         let expired_level_1_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(1),
             share_state: shared.clone(),
         };
         let cascade_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(1) + 10 * slot_range(0),
             share_state: shared.clone(),
         };
         let duplicate_cascade_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 1 * slot_range(1) + 10 * slot_range(0),
             share_state: shared.clone(),
         };
@@ -963,7 +927,6 @@ mod wheel_test {
         let now = u64::MAX;
         let mut wheel = TimerWheel::new();
         let far_future_entry = TimerEntry {
-            deadline: Instant::now(),
             deadline_tick: 65 * slot_range(5),
             share_state: shared.clone(),
         };
