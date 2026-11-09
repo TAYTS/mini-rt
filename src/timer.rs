@@ -25,8 +25,8 @@ fn to_tick(instant: time::Instant) -> u64 {
 }
 
 /// Extracts all expired [TimerEntry] instances from the timer wheel and wakes their tasks.
-fn try_poll(wheel: &mut TimerWheel) {
-    let now = to_tick(Instant::now());
+fn try_poll(wheel: &mut TimerWheel, now: Option<u64>) {
+    let now = now.unwrap_or_else(|| to_tick(Instant::now()));
 
     while let Some(entry) = wheel.poll(now) {
         let waker = {
@@ -41,13 +41,18 @@ fn try_poll(wheel: &mut TimerWheel) {
     }
 }
 
+/// Shutdown timer wheel and force wakes up all the [TimerEntry].
+fn shutdown(wheel: &mut TimerWheel) {
+    try_poll(wheel, Some(u64::MAX));
+}
+
 /// Initializes the timer wheel and processes incoming [TimerEntry] messages from the receivers.
 fn run_timer_wheel(recv: Receiver<TimerEntry>) {
     let mut wheel = TimerWheel::new();
 
     loop {
-        // Clear all the expired timer in timer wheel before polling new entry from the channel
-        try_poll(&mut wheel);
+        // Clear all expired timers from the timer wheel before polling from new entries.
+        try_poll(&mut wheel, None);
 
         match wheel.next_expiration_time() {
             Some(expiration_time) => {
@@ -62,15 +67,20 @@ fn run_timer_wheel(recv: Receiver<TimerEntry>) {
                         continue;
                     }
                     Err(RecvTimeoutError::Disconnected) => {
-                        // No more timer in the pipeline, terminate
+                        // Channel disconnected, trigger shutdown and flush remaining timers
+                        shutdown(&mut wheel);
                         return;
                     }
                 };
             }
             None => {
-                // No pending sleep timer, waiting for new task from channel idefinitely to save CPU cycles.
-                let new_entry = recv.recv().expect("failed to get timer");
-                wheel.insert(new_entry);
+                // No pending sleep timer, waiting for new task from channel indefinitely to save CPU cycles.
+                if let Ok(new_entry) = recv.recv() {
+                    wheel.insert(new_entry);
+                } else {
+                    shutdown(&mut wheel);
+                    return;
+                }
             }
         }
     }
@@ -102,4 +112,76 @@ pub fn sleep(duration: time::Duration) -> Sleep {
     };
     sender.send(timer_entry).expect("failed to queue timer");
     sleep_fut
+}
+
+#[cfg(test)]
+mod timer_test {
+    use std::ops::{Add, Sub};
+
+    use super::*;
+
+    #[test]
+    fn to_tick_handle_earlier_instant() {
+        let past_instant = Instant::now().sub(Duration::from_secs(60));
+        let tick = to_tick(past_instant);
+
+        assert_eq!(tick, 0);
+    }
+
+    #[test]
+    fn try_poll_process_all_expired_timer() {
+        let mut wheel = TimerWheel::new();
+        let expired_shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+        let expired_entry = TimerEntry {
+            deadline_tick: to_tick(Instant::now().sub(Duration::from_hours(1))),
+            share_state: expired_shared.clone(),
+        };
+        let future_shared = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+        let future_entry = TimerEntry {
+            deadline_tick: to_tick(Instant::now().add(Duration::from_hours(1))),
+            share_state: future_shared.clone(),
+        };
+        wheel.insert(expired_entry);
+        wheel.insert(future_entry);
+
+        try_poll(&mut wheel, None);
+
+        assert!(expired_shared.lock().unwrap().fired);
+        assert!(!future_shared.lock().unwrap().fired);
+    }
+
+    #[test]
+    fn shutdown_clear_all_timer() {
+        let mut wheel = TimerWheel::new();
+        let shared1 = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+        let entry1 = TimerEntry {
+            deadline_tick: to_tick(Instant::now().add(Duration::from_hours(1))),
+            share_state: shared1.clone(),
+        };
+        let shared2 = Arc::new(Mutex::new(TimerShareState {
+            fired: false,
+            waker: None,
+        }));
+        let entry2 = TimerEntry {
+            deadline_tick: to_tick(Instant::now().add(Duration::from_millis(10))),
+            share_state: shared2.clone(),
+        };
+        wheel.insert(entry1);
+        wheel.insert(entry2);
+
+        shutdown(&mut wheel);
+
+        assert!(wheel.poll(to_tick(Instant::now())).is_none());
+        assert!(shared1.lock().unwrap().fired);
+        assert!(shared2.lock().unwrap().fired);
+    }
 }
