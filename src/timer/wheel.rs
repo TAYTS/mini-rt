@@ -10,7 +10,7 @@ const SLOTS_PER_LEVEL: usize = 64;
 
 const SLOT_MASK: u64 = (1 << BITS_PER_LEVEL) - 1;
 
-const MAX_DURATION: u64 = (1 << NUM_LEVELS * BITS_PER_LEVEL) - 1;
+const MAX_DURATION: u64 = (1 << (NUM_LEVELS * BITS_PER_LEVEL)) - 1;
 
 /// Determines the timer wheel level for `when` relative to `elapsed`.
 ///
@@ -58,7 +58,7 @@ impl Level {
     /// Creates a new [Level] at the given index with empty slots.
     fn new(level: usize) -> Level {
         Level {
-            level: level,
+            level,
             slots: array::from_fn(|_| Vec::new()),
             occupied: 0,
         }
@@ -114,11 +114,11 @@ pub(crate) struct TimerWheel {
 impl TimerWheel {
     /// Creates a new empty [TimerWheel] with all levels initialized and `elapsed` set to 0.
     pub(crate) fn new() -> TimerWheel {
-        return TimerWheel {
+        TimerWheel {
             elapsed: 0,
-            levels: array::from_fn(|i| Level::new(i)),
+            levels: array::from_fn(Level::new),
             pending: VecDeque::new(),
-        };
+        }
     }
 
     /// Inserts a [TimerEntry] into the wheel hierarchy.
@@ -168,8 +168,8 @@ impl TimerWheel {
                 }
                 return Some(Expiration {
                     level: i,
-                    slot: slot,
-                    deadline: deadline,
+                    slot,
+                    deadline,
                 });
             }
         }

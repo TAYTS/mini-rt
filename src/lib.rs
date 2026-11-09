@@ -78,6 +78,12 @@ impl RunQueue {
     }
 }
 
+impl Default for RunQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 struct ShareState<T> {
     result: Option<T>,
     waker: Option<Waker>,

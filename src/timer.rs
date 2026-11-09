@@ -19,7 +19,7 @@ static TIMER_SENDER: OnceLock<SyncSender<TimerEntry>> = OnceLock::new();
 
 /// Converts a [time::Instant] to monotonic clock ticks with millisecond resolution.
 fn to_tick(instant: time::Instant) -> u64 {
-    let start_time = START_TIME.get_or_init(|| time::Instant::now());
+    let start_time = START_TIME.get_or_init(time::Instant::now);
     let tick = instant.saturating_duration_since(*start_time);
     u64::try_from(tick.as_millis()).unwrap_or(u64::MAX)
 }

@@ -4,7 +4,7 @@ use mini_rt::sleep;
 use mini_rt::{block_on, spawn};
 
 fn main() {
-    let _ = block_on(async {
+    block_on(async {
         let handle1 = spawn(async {
             println!("Task 1 going to sleep...");
             sleep(Duration::from_secs(5)).await;
