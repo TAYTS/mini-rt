@@ -245,9 +245,8 @@ struct Expiration {
 #[cfg(test)]
 mod wheel_test {
     use super::super::entry::{TimerEntry, TimerShareState};
-    use std::sync::{Arc, Mutex};
-
     use super::*;
+    use std::sync::{Arc, Mutex};
 
     #[test]
     fn level_for_base_case() {
