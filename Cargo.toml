@@ -5,3 +5,13 @@ edition = "2024"
 
 [dev-dependencies]
 ntest = "0.9.5"
+
+[lints.clippy]
+# Disallow `use foo::*` (except in tests)
+wildcard_imports = "warn"
+
+# Disallow `use MyEnum::*`
+enum_glob_use = "warn"
+
+# Disallow importing items directly if they are already in the prelude
+useless_attribute = "warn"
