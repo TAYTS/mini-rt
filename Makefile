@@ -10,7 +10,7 @@ test-verbose:
 
 # Run formatter
 fmt:
-	cargo fmt
+	cargo +nightly fmt
 
 # Run linter
 lint:

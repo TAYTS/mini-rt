@@ -1,6 +1,6 @@
+use std::{array, collections::VecDeque};
+
 use super::entry::TimerEntry;
-use std::array;
-use std::collections::VecDeque;
 
 const NUM_LEVELS: usize = 6;
 
@@ -244,9 +244,12 @@ struct Expiration {
 
 #[cfg(test)]
 mod wheel_test {
-    use super::super::entry::{TimerEntry, TimerShareState};
-    use super::*;
     use std::sync::{Arc, Mutex};
+
+    use super::{
+        super::entry::{TimerEntry, TimerShareState},
+        *,
+    };
 
     #[test]
     fn level_for_base_case() {

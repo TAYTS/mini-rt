@@ -1,7 +1,6 @@
 use std::time::Duration;
 
-use mini_rt::sleep;
-use mini_rt::{block_on, spawn};
+use mini_rt::{block_on, sleep, spawn};
 
 fn main() {
     block_on(async {

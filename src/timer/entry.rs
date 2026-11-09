@@ -1,6 +1,8 @@
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
+use std::{
+    pin::Pin,
+    sync::{Arc, Mutex},
+    task::{Context, Poll, Waker},
+};
 
 pub struct Sleep {
     pub(crate) share_state: Arc<Mutex<TimerShareState>>,

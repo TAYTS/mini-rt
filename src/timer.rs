@@ -1,12 +1,14 @@
 mod entry;
 mod wheel;
 
-use std::sync::{
-    Arc, Mutex, OnceLock,
-    mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
+use std::{
+    sync::{
+        Arc, Mutex, OnceLock,
+        mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
+    },
+    thread, time,
+    time::{Duration, Instant},
 };
-use std::time::{Duration, Instant};
-use std::{thread, time};
 
 use entry::{Sleep, TimerEntry, TimerShareState};
 use wheel::TimerWheel;

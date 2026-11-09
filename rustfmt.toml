@@ -1,0 +1,8 @@
+# Sort imports alphabetically
+reorder_imports = true
+
+# Group imports into: std, external crates, and local modules
+group_imports = "StdExternalCrate"
+
+# Merge imports from the same crate together
+imports_granularity = "Crate"

@@ -1,11 +1,14 @@
+use std::{
+    future::poll_fn,
+    pin::Pin,
+    sync::{Arc, Mutex},
+    task::{Context, Poll, Waker},
+    thread,
+    time::Duration,
+};
+
 use mini_rt::{block_on, sleep, spawn};
 use ntest::timeout;
-use std::future::poll_fn;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll, Waker};
-use std::thread;
-use std::time::Duration;
 
 struct NoopFuture;
 
