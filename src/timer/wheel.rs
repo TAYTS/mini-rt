@@ -194,7 +194,7 @@ impl TimerWheel {
                     }
                 }
                 _ => {
-                    self.elapsed = now;
+                    self.set_elapsed(now);
                     break;
                 }
             }
