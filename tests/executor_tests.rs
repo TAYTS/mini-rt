@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
     task::{Context, Poll, Waker},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use mini_rt::{block_on, sleep, spawn};
@@ -309,4 +309,25 @@ fn test_sleep_fired_in_order() {
 
     let output_guard = output.lock().unwrap();
     assert_eq!(*output_guard, [5, 10, 50, 100]);
+}
+
+#[test]
+#[timeout(1000)]
+fn test_sleep_does_not_fire_early() {
+    block_on(async {
+        let baseline = Duration::from_millis(2);
+
+        for _ in 0..100 {
+            let start = Instant::now();
+            sleep(Duration::from_millis(2)).await;
+            let elapsed = start.elapsed();
+
+            assert!(
+                elapsed >= baseline,
+                "expected at least {:?}, got {:?}",
+                baseline,
+                elapsed
+            );
+        }
+    });
 }
