@@ -4,10 +4,10 @@ mod wheel;
 use std::{
     sync::{
         Arc, Mutex, OnceLock,
-        mpsc::{Receiver, RecvTimeoutError, SyncSender, sync_channel},
+        mpsc::{Receiver, RecvTimeoutError, SyncSender, TryRecvError, sync_channel},
     },
-    thread, time,
-    time::{Duration, Instant},
+    thread,
+    time::{self, Duration, Instant},
 };
 
 use entry::{Sleep, TimerEntry, TimerShareState};
@@ -68,7 +68,21 @@ fn run_timer_wheel(recv: Receiver<TimerEntry>) {
 
                 // Sleeps up to `timeout`, but wakes up early if a new timer arrives
                 match recv.recv_timeout(timeout) {
-                    Ok(new_entry) => wheel.insert(new_entry),
+                    Ok(new_entry) => {
+                        wheel.insert(new_entry);
+
+                        // Drain the rest of the backlog before re-scanning the wheel.
+                        loop {
+                            match recv.try_recv() {
+                                Ok(entry) => wheel.insert(entry),
+                                Err(TryRecvError::Empty) => break,
+                                Err(TryRecvError::Disconnected) => {
+                                    shutdown(&mut wheel);
+                                    return;
+                                }
+                            }
+                        }
+                    }
                     Err(RecvTimeoutError::Timeout) => {
                         // Move to next iteration to start polling expired timer.
                         continue;
