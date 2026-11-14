@@ -275,7 +275,6 @@ fn test_10k_sleep() {
         for handle in handles {
             handle.await
         }
-        // All should finish at 10ms else will trigger timeout for this test
     });
 }
 
