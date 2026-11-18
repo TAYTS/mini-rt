@@ -151,8 +151,8 @@ impl TimerWheel {
         }
 
         let now = self.elapsed;
-        for i in 0..NUM_LEVELS {
-            if let Some(slot) = self.levels[i].next_occupied_slot(now) {
+        for (i, level) in self.levels.iter().enumerate().take(NUM_LEVELS) {
+            if let Some(slot) = level.next_occupied_slot(now) {
                 let level_range = level_range(i);
                 let slot_range = slot_range(i);
 
