@@ -10,7 +10,7 @@ test-verbose:
 
 # Run formatter
 fmt:
-	cargo +nightly fmt
+	cargo +nightly fmt && cargo clippy --fix --allow-dirty
 
 # Run linter
 lint:
