@@ -48,8 +48,9 @@ pub struct TimerShareState {
 
 #[cfg(test)]
 mod entrytest {
-    use super::*;
     use std::task::Waker;
+
+    use super::*;
 
     #[test]
     fn test_drop_sleep() {
