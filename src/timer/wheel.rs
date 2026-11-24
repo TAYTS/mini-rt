@@ -429,11 +429,11 @@ mod wheel_test {
 
         let mut level = Level::new(0);
         let first_entry = TimerEntry {
-            deadline_tick: 1 * slot_range(0),
+            deadline_tick: slot_range(0),
             share_state: shared.clone(),
         };
         let second_entry = TimerEntry {
-            deadline_tick: 1 * slot_range(0),
+            deadline_tick: slot_range(0),
             share_state: shared.clone(),
         };
 
@@ -453,7 +453,7 @@ mod wheel_test {
 
         let mut level = Level::new(0);
         let first_entry = TimerEntry {
-            deadline_tick: 1 * slot_range(0),
+            deadline_tick: slot_range(0),
             share_state: shared.clone(),
         };
         let second_entry = TimerEntry {
@@ -478,11 +478,11 @@ mod wheel_test {
 
         let mut level = Level::new(0);
         let first_entry = TimerEntry {
-            deadline_tick: 1 * slot_range(0),
+            deadline_tick: slot_range(0),
             share_state: shared.clone(),
         };
         let second_entry = TimerEntry {
-            deadline_tick: 1 * slot_range(0),
+            deadline_tick: slot_range(0),
             share_state: shared.clone(),
         };
         let third_entry = TimerEntry {
@@ -519,7 +519,7 @@ mod wheel_test {
             let mut level = Level::new(i);
             let now = SLOTS_PER_LEVEL as u64 / 2 * slot_range(i);
             let past_entry = TimerEntry {
-                deadline_tick: 1 * slot_range(i),
+                deadline_tick: slot_range(i),
                 share_state: shared.clone(),
             };
             let future_entry = TimerEntry {
@@ -546,7 +546,7 @@ mod wheel_test {
         let mut level = Level::new(0);
         let now = 5 * slot_range(0);
         let entry = TimerEntry {
-            deadline_tick: 1 * slot_range(0),
+            deadline_tick: slot_range(0),
             share_state: shared.clone(),
         };
         level.insert(entry);
@@ -776,7 +776,7 @@ mod wheel_test {
         let expiration2 = Expiration {
             level: 1,
             slot: 1,
-            deadline: 1 * slot_range(1) + 5 * slot_range(0),
+            deadline: slot_range(1) + 5 * slot_range(0),
         };
         let now = 2 * slot_range(1);
 
@@ -786,11 +786,11 @@ mod wheel_test {
             share_state: shared.clone(),
         };
         let expired_level_1_entry = TimerEntry {
-            deadline_tick: 1 * slot_range(1),
+            deadline_tick: slot_range(1),
             share_state: shared.clone(),
         };
         let cascade_entry = TimerEntry {
-            deadline_tick: 1 * slot_range(1) + 10 * slot_range(0),
+            deadline_tick: slot_range(1) + 10 * slot_range(0),
             share_state: shared.clone(),
         };
         wheel.insert(expired_level_0_entry);
@@ -870,15 +870,15 @@ mod wheel_test {
         let now = 2 * slot_range(1);
         let mut wheel = TimerWheel::new();
         let expired_level_1_entry = TimerEntry {
-            deadline_tick: 1 * slot_range(1),
+            deadline_tick: slot_range(1),
             share_state: shared.clone(),
         };
         let cascade_entry = TimerEntry {
-            deadline_tick: 1 * slot_range(1) + 10 * slot_range(0),
+            deadline_tick: slot_range(1) + 10 * slot_range(0),
             share_state: shared.clone(),
         };
         let duplicate_cascade_entry = TimerEntry {
-            deadline_tick: 1 * slot_range(1) + 10 * slot_range(0),
+            deadline_tick: slot_range(1) + 10 * slot_range(0),
             share_state: shared.clone(),
         };
         wheel.insert(expired_level_1_entry);
@@ -890,29 +890,29 @@ mod wheel_test {
 
         assert!(entry.is_some());
         let entry = entry.unwrap();
-        assert_eq!(entry.deadline_tick, 1 * slot_range(1));
+        assert_eq!(entry.deadline_tick, slot_range(1));
         assert_eq!(wheel.levels[1].slots[1].len(), 0);
         assert_eq!(wheel.levels[0].slots[10].len(), 2);
         assert_eq!(wheel.pending.len(), 0);
-        assert_eq!(wheel.elapsed, 1 * slot_range(1));
+        assert_eq!(wheel.elapsed, slot_range(1));
 
         // pop second expired entry
         let entry = wheel.poll(now);
 
         assert!(entry.is_some());
         let entry = entry.unwrap();
-        assert_eq!(entry.deadline_tick, 1 * slot_range(1) + 10 * slot_range(0));
+        assert_eq!(entry.deadline_tick, slot_range(1) + 10 * slot_range(0));
         assert_eq!(wheel.levels[0].slots[10].len(), 0);
         assert_eq!(wheel.pending.len(), 1);
-        assert_eq!(wheel.elapsed, 1 * slot_range(1) + 10 * slot_range(0));
+        assert_eq!(wheel.elapsed, slot_range(1) + 10 * slot_range(0));
 
         // pop duplicate expired entry
         let entry = wheel.poll(now);
         assert!(entry.is_some());
         let entry = entry.unwrap();
-        assert_eq!(entry.deadline_tick, 1 * slot_range(1) + 10 * slot_range(0));
+        assert_eq!(entry.deadline_tick, slot_range(1) + 10 * slot_range(0));
         assert_eq!(wheel.pending.len(), 0);
-        assert_eq!(wheel.elapsed, 1 * slot_range(1) + 10 * slot_range(0));
+        assert_eq!(wheel.elapsed, slot_range(1) + 10 * slot_range(0));
 
         let entry = wheel.poll(now);
         assert!(entry.is_none());

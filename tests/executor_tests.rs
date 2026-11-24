@@ -107,13 +107,13 @@ fn test_wake_from_other_thread() {
     });
 
     // Ensure the spawned future has driven to completion
-    assert!(block_on(async { join_handle.await }));
+    assert!(block_on(join_handle));
 }
 
 #[test]
 #[timeout(1000)]
 fn test_ping_pong() {
-    let _ = block_on(async {
+    block_on(async {
         let shared_data: Arc<Mutex<ShareData>> = Arc::new(Mutex::new(ShareData {
             data: false,
             waker: None,
@@ -198,7 +198,7 @@ fn test_sleep_with_earlier_timeout() {
     let clone1 = output.clone();
     let clone2 = output.clone();
 
-    let _ = block_on(async {
+    block_on(async {
         let handle1 = spawn(async move {
             sleep(Duration::from_millis(100)).await;
             clone1.lock().unwrap().push("spawn 1".into());
